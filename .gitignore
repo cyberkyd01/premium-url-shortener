@@ -1,0 +1,11 @@
+node_modules
+.next
+out
+*.db
+*.db-journal
+.env
+public/uploads/*
+!public/uploads/.gitkeep
+storage/cache/*
+.DS_Store
+tsconfig.tsbuildinfo

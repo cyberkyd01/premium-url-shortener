@@ -1,0 +1,72 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Shorten</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f8fafc; --card: #fff; --fg: #0f172a; --muted: #64748b; --border: #e2e8f0; --primary: #6366f1; --danger: #ef4444; --success: #10b981; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0b1120; --card: #111827; --fg: #f1f5f9; --muted: #94a3b8; --border: #1f2937; --primary: #818cf8; } }
+    * { box-sizing: border-box; }
+    body { width: 360px; margin: 0; padding: 14px; background: var(--bg); color: var(--fg); font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    h1 { font-size: 15px; margin: 0 0 10px; display: flex; justify-content: space-between; align-items: center; }
+    h1 a { font-size: 12px; font-weight: normal; color: var(--muted); text-decoration: none; }
+    label { display: block; font-size: 11px; color: var(--muted); margin: 8px 0 3px; text-transform: uppercase; letter-spacing: .04em; }
+    input, select { width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--fg); font-size: 13px; }
+    input:focus, select:focus { outline: 2px solid var(--primary); outline-offset: 0; border-color: transparent; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; min-width: 0; }
+    button { cursor: pointer; border: 0; border-radius: 8px; padding: 8px 12px; font-weight: 600; font-size: 13px; }
+    .primary { background: var(--primary); color: #fff; width: 100%; margin-top: 12px; }
+    .primary[disabled] { opacity: .6; cursor: wait; }
+    .ghost { background: transparent; color: var(--muted); padding: 4px 6px; font-weight: 500; }
+    #result { display: none; margin-top: 12px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); }
+    #short { font-weight: 600; word-break: break-all; }
+    #status { margin-top: 8px; font-size: 12px; color: var(--muted); min-height: 16px; }
+    #status.error { color: var(--danger); }
+    #status.ok { color: var(--success); }
+    .history { margin-top: 14px; }
+    .history h2 { font-size: 11px; color: var(--muted); margin: 0 0 6px; text-transform: uppercase; letter-spacing: .04em; display: flex; justify-content: space-between; }
+    .history ul { list-style: none; margin: 0; padding: 0; max-height: 170px; overflow: auto; }
+    .history li { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-top: 1px solid var(--border); }
+    .history li:first-child { border-top: 0; }
+    .history .meta { flex: 1; min-width: 0; }
+    .history .s { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .history .l { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .setup { padding: 12px; border: 1px dashed var(--border); border-radius: 10px; text-align: center; color: var(--muted); }
+    .setup a { color: var(--primary); }
+  </style>
+</head>
+<body>
+  <h1>Shorten <a href="#" id="open-options">Settings</a></h1>
+  <div id="setup" class="setup" style="display:none">Set your shortener URL and API key first.<br/><a href="#" id="open-options-2">Open settings</a></div>
+  <form id="form">
+    <label for="url">Long URL</label>
+    <input id="url" type="url" required placeholder="https://" />
+    <div class="row">
+      <div>
+        <label for="alias">Custom alias (optional)</label>
+        <input id="alias" type="text" placeholder="my-link" pattern="[A-Za-z0-9_-]*" />
+      </div>
+      <div>
+        <label for="domain">Domain</label>
+        <select id="domain"><option value="">Main domain</option></select>
+      </div>
+    </div>
+    <button class="primary" id="submit" type="submit">Shorten</button>
+  </form>
+  <div id="result">
+    <div id="short"></div>
+    <div class="row" style="margin-top:8px">
+      <button type="button" id="copy" class="primary" style="margin:0">Copy</button>
+      <button type="button" id="open" class="ghost">Open</button>
+      <button type="button" id="qr" class="ghost">QR</button>
+    </div>
+  </div>
+  <div id="status"></div>
+  <div class="history">
+    <h2>Recent <button type="button" class="ghost" id="clear">clear</button></h2>
+    <ul id="history"></ul>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

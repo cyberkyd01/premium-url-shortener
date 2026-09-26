@@ -1,0 +1,19 @@
+{
+  "nav.home": "Home", "nav.features": "Features", "nav.pricing": "Pricing", "nav.blog": "Blog", "nav.help": "Help Center",
+  "nav.login": "Login", "nav.register": "Sign up", "nav.dashboard": "Dashboard", "nav.logout": "Logout",
+  "home.title": "Shorten. Brand. Track.", "home.subtitle": "Create short links, bio pages and QR codes with powerful analytics.",
+  "home.placeholder": "Paste your long URL here", "home.shorten": "Shorten", "home.copy": "Copy", "home.copied": "Copied!",
+  "home.recent": "Your recent links", "home.customAlias": "Custom alias",
+  "dash.overview": "Overview", "dash.links": "Links", "dash.campaigns": "Campaigns", "dash.channels": "Channels", "dash.pixels": "Pixels",
+  "dash.domains": "Domains", "dash.splash": "Splash Pages", "dash.overlays": "Overlays", "dash.bio": "Bio Pages", "dash.qr": "QR Codes",
+  "dash.teams": "Teams", "dash.affiliate": "Affiliate", "dash.billing": "Billing", "dash.settings": "Settings", "dash.api": "API",
+  "common.save": "Save", "common.cancel": "Cancel", "common.delete": "Delete", "common.edit": "Edit", "common.create": "Create",
+  "common.search": "Search", "common.actions": "Actions", "common.status": "Status", "common.date": "Date", "common.name": "Name",
+  "common.clicks": "Clicks", "common.views": "Views", "common.scans": "Scans", "common.none": "Nothing here yet.",
+  "auth.email": "Email", "auth.password": "Password", "auth.username": "Username", "auth.forgot": "Forgot password?",
+  "auth.login": "Login", "auth.register": "Create account", "auth.orSocial": "or continue with",
+  "redirect.password": "This link is password protected", "redirect.continue": "Continue", "redirect.expired": "This link has expired",
+  "redirect.notFound": "Link not found", "redirect.wait": "You will be redirected in {seconds} seconds",
+  "bio.poweredBy": "Made with", "bio.subscribe": "Subscribe", "bio.send": "Send",
+  "footer.terms": "Terms", "footer.privacy": "Privacy", "footer.contact": "Contact", "footer.report": "Report abuse"
+}

@@ -1,0 +1,1262 @@
+// Premium URL Shortener - full data model
+// Default provider is SQLite. To use MySQL or PostgreSQL change `provider` below and DATABASE_URL.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- Auth & Users
+model User {
+  id                String    @id @default(cuid())
+  username          String    @unique
+  email             String    @unique
+  password          String?
+  name              String?
+  avatar            String?
+  role              String    @default("user") // admin | user | or custom Role slug
+  roleId            String?
+  roleRel           Role?     @relation(fields: [roleId], references: [id])
+  status            Int       @default(1) // 1 active, 0 banned, 2 pending verification
+  emailVerified     DateTime?
+  verificationToken String?
+  resetToken        String?
+  resetExpires      DateTime?
+  twoFactorEnabled  Boolean   @default(false)
+  twoFactorSecret   String?
+  twoFactorMethod   String    @default("app") // app | email
+  emailOtp          String?
+  emailOtpExpires   DateTime?
+  language          String    @default("en")
+  timezone          String    @default("UTC")
+  planId            String?
+  plan              Plan?     @relation(fields: [planId], references: [id])
+  planExpires       DateTime?
+  planTrialEnds     DateTime?
+  apiKey            String?   @unique
+  affiliateCode     String?   @unique
+  referredById      String?
+  referredBy        User?     @relation("Referrals", fields: [referredById], references: [id])
+  referrals         User[]    @relation("Referrals")
+  affiliateBalance  Float     @default(0)
+  aiCredits         Int       @default(0)
+  aiCreditsResetAt  DateTime?
+  verified          Boolean   @default(false) // verified badge
+  gravatar          Boolean   @default(true)
+  notifyEmail       Boolean   @default(true)
+  postLoginRedirect String?
+  lastLoginAt       DateTime?
+  lastLoginIp       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  links           Link[]
+  campaigns       Campaign[]
+  pixels          Pixel[]
+  domains         Domain[]
+  splashPages     SplashPage[]
+  overlays        Overlay[]
+  bioPages        BioPage[]
+  qrCodes         QrCode[]
+  teamsOwned      Team[]           @relation("TeamOwner")
+  teamMemberships TeamMember[]
+  invitations     TeamInvite[]     @relation("Inviter")
+  payments        Payment[]
+  subscriptions   Subscription[]
+  apiKeys         ApiKey[]
+  webhooks        Webhook[]
+  notifications   Notification[]
+  affiliatePayouts AffiliatePayout[]
+  affiliateEarnings AffiliateEarning[] @relation("AffiliateUser")
+  loginHistory    LoginHistory[]
+  aiUsage         AiUsage[]
+  paramTemplates  ParameterTemplate[]
+  blogPosts       BlogPost[]
+  reports         Report[]
+  importJobs      ImportJob[]
+  verificationRequests VerificationRequest[]
+  couponRedemptions CouponRedemption[]
+  activeTeamId    String?
+  isPublic        Boolean  @default(false) // public account (campaign list pages)
+  channels        Channel[]
+  tickets         Ticket[]
+  ticketReplies   TicketReply[]
+  files           HostedFile[]
+  smsMessages     SmsMessage[]
+  smsContacts     SmsContact[]
+  twilioSid       String?
+  twilioToken     String?
+  twilioFrom      String?
+  storageUsed     Int      @default(0) // bytes used by file hosting
+  backupCodes     String   @default("[]") // hashed 2FA backup codes
+  magicToken      String?
+  magicExpires    DateTime?
+  reportFrequency String   @default("none") // none | weekly | monthly
+  reportSentAt    DateTime?
+  activities      ActivityLog[]
+  sharedReports   SharedReport[]
+  tempMailboxes   TempMailbox[]
+
+  @@index([planId])
+  @@index([referredById])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model LoginHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip        String?
+  userAgent String?
+  country   String?
+  success   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  permissions String   @default("[]") // JSON array of permission keys
+  isAdmin     Boolean  @default(false)
+  users       User[]
+  createdAt   DateTime @default(now())
+}
+
+model VerificationRequest {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   @default("badge") // badge | email | 2fa_reset
+  message   String?
+  status    String   @default("pending") // pending | approved | rejected
+  document  String? // uploaded document path
+  createdAt DateTime @default(now())
+}
+
+model Channel {
+  id        String    @id @default(cuid())
+  name      String
+  color     String    @default("#6366f1")
+  starred   Boolean   @default(false)
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId    String?
+  links     Link[]
+  bioPages  BioPage[]
+  qrCodes   QrCode[]
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------- Teams
+model Team {
+  id        String       @id @default(cuid())
+  name      String
+  ownerId   String
+  owner     User         @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members   TeamMember[]
+  invites   TeamInvite[]
+  createdAt DateTime     @default(now())
+}
+
+model TeamMember {
+  id          String   @id @default(cuid())
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        String   @default("member") // admin | member | viewer
+  permissions String   @default("{}") // JSON: {links:{create,edit,delete}, bio:{...}, qr:{...}, ...}
+  createdAt   DateTime @default(now())
+
+  @@unique([teamId, userId])
+}
+
+model TeamInvite {
+  id          String   @id @default(cuid())
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  email       String
+  token       String   @unique
+  role        String   @default("member")
+  permissions String   @default("{}")
+  inviterId   String
+  inviter     User     @relation("Inviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  accepted    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+}
+
+// ---------------------------------------------------------------- Plans, payments
+model Plan {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  description   String?
+  priceMonthly  Float    @default(0)
+  priceYearly   Float    @default(0)
+  priceLifetime Float    @default(0)
+  currency      String   @default("USD")
+  isFree        Boolean  @default(false)
+  isPublic      Boolean  @default(true)
+  isFeatured    Boolean  @default(false)
+  sortOrder     Int      @default(0)
+  trialDays     Int      @default(0)
+  // Limits (-1 = unlimited)
+  limitLinks          Int @default(-1)
+  limitLinksMonthly   Int @default(-1)
+  limitClicks         Int @default(-1)
+  limitBioPages       Int @default(0)
+  limitQrCodes        Int @default(0)
+  limitQrMonthly      Int @default(-1)
+  limitDomains        Int @default(0)
+  limitCampaigns      Int @default(0)
+  limitPixels         Int @default(0)
+  limitSplash         Int @default(0)
+  limitOverlays       Int @default(0)
+  limitTeamMembers    Int @default(0)
+  limitApiKeys        Int @default(1)
+  limitAiCredits      Int @default(0)
+  limitCoupons        Int @default(-1)
+  limitChannels       Int @default(-1)
+  limitFiles          Int @default(0)
+  limitStorageMb      Int @default(0)
+  limitSms            Int @default(0)
+  stripePriceMonthly  String?
+  stripePriceYearly   String?
+  stripeProductId     String?
+  paypalPlanMonthly   String?
+  paypalPlanYearly    String?
+  paddlePriceMonthly  String?
+  paddlePriceYearly   String?
+  paystackPlanMonthly String?
+  paystackPlanYearly  String?
+  // Features (JSON object of booleans/strings)
+  features      String   @default("{}")
+  // e.g. {"customAlias":true,"password":true,"expiration":true,"geoTargeting":true,"deviceTargeting":true,
+  //  "languageTargeting":true,"timeTargeting":true,"abTesting":true,"deepLinks":true,"utm":true,
+  //  "customSplash":true,"redirectTypes":["direct","frame","splash","custom","overlay"],"premiumAlias":true,
+  //  "noAds":true,"noBranding":true,"api":true,"import":true,"export":true,"customCss":true,"customLogo":true,
+  //  "bioTemplates":true,"advancedQr":true,"bulkQr":true,"clickLimit":true,"cloaking":true,"botBlock":true,
+  //  "statsRetentionDays":365,"webhooks":true,"parameterTemplates":true,"inAppBreakout":true,"aiCopilot":true}
+  users         User[]
+  subscriptions Subscription[]
+  payments      Payment[]
+  coupons       Coupon[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Subscription {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId        String
+  plan          Plan      @relation(fields: [planId], references: [id])
+  gateway       String // stripe | paypal | paddle | paystack | razorpay | mollie | coinpayments | cryptocom | lemonsqueezy | iyzico | midtrans | bank
+  gatewaySubId  String?
+  interval      String    @default("monthly") // monthly | yearly | lifetime
+  status        String    @default("active") // active | cancelled | past_due | trialing | expired
+  currentPeriodEnd DateTime?
+  cancelAt      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId        String?
+  plan          Plan?    @relation(fields: [planId], references: [id])
+  gateway       String
+  transactionId String?
+  amount        Float
+  tax           Float    @default(0)
+  discount      Float    @default(0)
+  currency      String   @default("USD")
+  interval      String   @default("monthly")
+  status        String   @default("pending") // pending | completed | failed | refunded
+  couponCode    String?
+  invoiceNumber String?  @unique
+  billingInfo   String? // JSON
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Coupon {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  type        String   @default("percent") // percent | fixed
+  amount      Float
+  planId      String?
+  plan        Plan?    @relation(fields: [planId], references: [id])
+  maxUses     Int      @default(-1)
+  uses        Int      @default(0)
+  isVoucher   Boolean  @default(false) // vouchers grant a plan for free
+  voucherDays Int      @default(0)
+  expiresAt   DateTime?
+  active      Boolean  @default(true)
+  redemptions CouponRedemption[]
+  createdAt   DateTime @default(now())
+}
+
+model CouponRedemption {
+  id        String   @id @default(cuid())
+  couponId  String
+  coupon    Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model TaxRate {
+  id       String @id @default(cuid())
+  name     String
+  country  String // ISO2 or "*"
+  state    String?
+  rate     Float
+  active   Boolean @default(true)
+}
+
+model PaymentGateway {
+  id       String  @id @default(cuid())
+  slug     String  @unique
+  name     String
+  enabled  Boolean @default(false)
+  config   String  @default("{}") // JSON credentials
+  mode     String  @default("sandbox")
+}
+
+// ---------------------------------------------------------------- Affiliates
+model AffiliateEarning {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("AffiliateUser", fields: [userId], references: [id], onDelete: Cascade)
+  referredId  String
+  paymentId   String?
+  amount      Float
+  status      String   @default("pending") // pending | approved | paid
+  createdAt   DateTime @default(now())
+}
+
+model AffiliatePayout {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Float
+  method    String   @default("paypal")
+  details   String?
+  status    String   @default("pending") // pending | paid | rejected
+  createdAt DateTime @default(now())
+  paidAt    DateTime?
+}
+
+// ---------------------------------------------------------------- Domains
+model Domain {
+  id          String   @id @default(cuid())
+  domain      String   @unique
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rootRedirect String? // where the root of the domain redirects
+  notFoundRedirect String? // URL fallback for unknown aliases
+  status      Int      @default(1) // 1 active, 0 pending verification
+  isPublic    Boolean  @default(false) // admin domains selectable by all users
+  isMain      Boolean  @default(false)
+  verifyToken String?
+  cfHostnameId String? // Cloudflare for SaaS custom hostname id
+  cfStatus    String? // pending | active | error
+  cfSslStatus String?
+  branding    String   @default("{}") // white-label: {name, logo, favicon, primary, accent, hideBranding, loginTitle}
+  links       Link[]
+  bioPages    BioPage[]
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------- Links
+model Link {
+  id            String    @id @default(cuid())
+  alias         String
+  url           String
+  domainId      String?
+  domain        Domain?   @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId        String?
+  campaignId    String?
+  campaign      Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  channelId     String?
+  channel       Channel?  @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  title         String?
+  description   String?
+  image         String? // custom meta image
+  redirectType  String    @default("direct") // direct | frame | splash | custom | overlay
+  splashId      String?
+  splash        SplashPage? @relation(fields: [splashId], references: [id], onDelete: SetNull)
+  overlayId     String?
+  overlay       Overlay?  @relation(fields: [overlayId], references: [id], onDelete: SetNull)
+  password      String?
+  expiresAt     DateTime?
+  expiredUrl    String?
+  clickLimit    Int?
+  clickLimitUrl String?
+  clicks        Int       @default(0)
+  uniqueClicks  Int       @default(0)
+  geoTargets    String    @default("[]") // [{country,state?,url}]
+  deviceTargets String    @default("[]") // [{device,url}]
+  langTargets   String    @default("[]") // [{lang,url}]
+  timeTargets   String    @default("[]") // [{from,to,days[],timezone,url}]
+  conditions    String    @default("[]") // advanced multi-condition: [{rules:[{field,op,value}],match:"all|any",url}]
+  abUrls        String    @default("[]") // [{url,weight}]
+  rotatorMode   String    @default("none") // none | ab | rotate | random
+  deepLink      Boolean   @default(false)
+  deepLinkConfig String   @default("{}") // {ios,android,fallback,auto}
+  utm           String    @default("{}") // {source,medium,campaign,term,content}
+  customParams  String    @default("{}")
+  forwardParams Boolean   @default(false)
+  cloaking      Boolean   @default(false)
+  botBlock      Boolean   @default(false)
+  inAppBreakout Boolean   @default(false)
+  pixels        LinkPixel[]
+  isPublic      Boolean   @default(true) // show in public stats
+  isArchived    Boolean   @default(false)
+  isPinned      Boolean   @default(false)
+  status        String    @default("active") // active | pending (approval) | disabled | blocked
+  isPremiumAlias Boolean  @default(false)
+  isAnonymous   Boolean   @default(false)
+  qrCodes       QrCode[]
+  stats         Click[]
+  notes         String?
+  tags          String    @default("") // comma separated
+  activateAt    DateTime? // scheduled go-live
+  blockCountries String   @default("[]")
+  blockIps      String    @default("[]")
+  fallbackUrl   String? // used when destination is unhealthy
+  healthStatus  String    @default("unknown") // unknown | ok | broken
+  healthCheckedAt DateTime?
+  healthCode    Int?
+  conversions   Int       @default(0)
+  conversionValue Float   @default(0)
+  alertThreshold Int?
+  alertSentAt   DateTime?
+  checks        LinkCheck[]
+  conversionsRel Conversion[]
+  shares        SharedReport[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([alias, domainId])
+  @@index([healthStatus])
+  @@index([userId])
+  @@index([campaignId])
+  @@index([alias])
+  @@index([createdAt])
+}
+
+model Click {
+  id         String   @id @default(cuid())
+  linkId     String?
+  link       Link?    @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  bioPageId  String?
+  bioPage    BioPage? @relation(fields: [bioPageId], references: [id], onDelete: Cascade)
+  qrCodeId   String?
+  qrCode     QrCode?  @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
+  ip         String?
+  ipHash     String?
+  country    String?
+  countryCode String?
+  region     String?
+  city       String?
+  lat        Float?
+  lng        Float?
+  referer    String?
+  refererHost String?
+  userAgent  String?
+  browser    String?
+  os         String?
+  device     String? // desktop | mobile | tablet | bot
+  language   String?
+  isUnique   Boolean  @default(true)
+  isBot      Boolean  @default(false)
+  targetUrl  String?
+  utmSource  String?
+  utmMedium  String?
+  utmCampaign String?
+  createdAt  DateTime @default(now())
+
+  @@index([linkId, createdAt])
+  @@index([bioPageId, createdAt])
+  @@index([qrCodeId, createdAt])
+  @@index([countryCode])
+}
+
+model Campaign {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  color       String   @default("#6366f1")
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId      String?
+  isRotator   Boolean  @default(false)
+  rotatorAlias String? @unique
+  rotatorMode String   @default("sequential") // sequential | random | weighted
+  isPublic    Boolean  @default(false)
+  links       Link[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Pixel {
+  id        String      @id @default(cuid())
+  name      String
+  provider  String // facebook | twitter | bing | google-ads | gtm | ga | snapchat | reddit | quora | pinterest | tiktok | linkedin | adroll | hotjar | clarity | matomo | custom
+  pixelId   String
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId    String?
+  links     LinkPixel[]
+  createdAt DateTime    @default(now())
+
+  @@index([userId])
+}
+
+model LinkPixel {
+  linkId  String
+  link    Link  @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  pixelId String
+  pixel   Pixel @relation(fields: [pixelId], references: [id], onDelete: Cascade)
+
+  @@id([linkId, pixelId])
+}
+
+model SplashPage {
+  id          String   @id @default(cuid())
+  name        String
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId      String?
+  title       String?
+  description String?
+  logo        String?
+  image       String?
+  buttonText  String   @default("Continue")
+  buttonColor String   @default("#6366f1")
+  bgColor     String   @default("#ffffff")
+  textColor   String   @default("#111827")
+  countdown   Int      @default(5)
+  showAds     Boolean  @default(false)
+  adCode      String?
+  customCss   String?
+  customHtml  String?
+  isDefault   Boolean  @default(false)
+  links       Link[]
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Overlay {
+  id          String   @id @default(cuid())
+  name        String
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId      String?
+  type        String   @default("message") // message | contact | poll | newsletter | image | video | cta | coupon
+  position    String   @default("bottom-left") // bottom-left | bottom-right | top | center | bottom-bar
+  title       String?
+  message     String?
+  buttonText  String?
+  buttonUrl   String?
+  image       String?
+  video       String?
+  options     String   @default("{}") // JSON: poll options, colors, delay, disclaimer, form fields
+  bgColor     String   @default("#ffffff")
+  textColor   String   @default("#111827")
+  accentColor String   @default("#6366f1")
+  delay       Int      @default(2)
+  disclaimer  String?
+  responses   OverlayResponse[]
+  links       Link[]
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+model OverlayResponse {
+  id        String   @id @default(cuid())
+  overlayId String
+  overlay   Overlay  @relation(fields: [overlayId], references: [id], onDelete: Cascade)
+  data      String   @default("{}")
+  ip        String?
+  createdAt DateTime @default(now())
+}
+
+model ParameterTemplate {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  params    String   @default("{}") // utm + custom params
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------- Bio pages
+model BioPage {
+  id           String    @id @default(cuid())
+  alias        String
+  domainId     String?
+  domain       Domain?   @relation(fields: [domainId], references: [id], onDelete: SetNull)
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId       String?
+  channelId    String?
+  channel      Channel?  @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  name         String?
+  bio          String?
+  avatar       String?
+  cover        String?
+  verified     Boolean   @default(false)
+  theme        String    @default("default")
+  layout       String    @default("centered") // centered | left | split | card | grid
+  buttonStyle  String    @default("rounded") // rounded | square | pill | outline | shadow | frosted | hard-shadow
+  font         String    @default("Inter")
+  colors       String    @default("{}") // {bg, bgGradient, text, button, buttonText, link, animation}
+  customCss    String?
+  customJs     String? // page-level JavaScript, gated by the custom code feature
+  customLogo   String?
+  hideBranding Boolean   @default(false)
+  seo          String    @default("{}") // {title, description, image, noindex}
+  socials      String    @default("[]") // [{network,url,order}]
+  socialsPosition String @default("bottom")
+  socialIconStyle String @default("default") // default | circle | square | colored
+  password     String?
+  ageGate      Int? // minimum age
+  sensitive    Boolean   @default(false)
+  newsletterGate Boolean @default(false)
+  nsfwWarning  Boolean   @default(false)
+  isDefault    Boolean   @default(false)
+  listed       Boolean   @default(false) // show in the public bio pages directory
+  isTemplate   Boolean   @default(false)
+  templateName String?
+  status       String    @default("active")
+  views        Int       @default(0)
+  uniqueViews  Int       @default(0)
+  pixelsJson   String    @default("[]")
+  contactEmail String?
+  blocks       BioBlock[]
+  stats        Click[]
+  qrCodes      QrCode[]
+  submissions  BioSubmission[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([alias, domainId])
+  @@index([userId])
+}
+
+model BioBlock {
+  id         String   @id @default(cuid())
+  bioPageId  String
+  bioPage    BioPage  @relation(fields: [bioPageId], references: [id], onDelete: Cascade)
+  type       String // link | heading | text | image | gallery | carousel | video | audio | youtube | vimeo | spotify | soundcloud | applemusic | tiktok | twitter | instagram | facebook | linkedin | threads | reddit | pinterest | snapchat | telegram | whatsapp | discord | twitch | github | email | phone | vcard | contact | newsletter | faq | poll | countdown | map | calendly | typeform | eventbrite | opentable | booking | music | giphy | rss | divider | html | featured | product | paypal | donation | app | file | pdf | cookie
+  title      String?
+  url        String?
+  content    String   @default("{}") // JSON block-specific config
+  thumbnail  String?
+  order      Int      @default(0)
+  clicks     Int      @default(0)
+  enabled    Boolean  @default(true)
+  scheduleStart DateTime?
+  scheduleEnd   DateTime?
+  countries  String   @default("[]") // limit to countries
+  languages  String   @default("[]")
+  sensitive  Boolean  @default(false)
+  gated      String? // newsletter | password | age
+  animation  String?
+  createdAt  DateTime @default(now())
+
+  @@index([bioPageId, order])
+}
+
+model BioSubmission {
+  id        String   @id @default(cuid())
+  bioPageId String
+  bioPage   BioPage  @relation(fields: [bioPageId], references: [id], onDelete: Cascade)
+  blockId   String?
+  type      String // contact | newsletter | poll
+  data      String   @default("{}")
+  ip        String?
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------- QR codes
+model QrCode {
+  id        String   @id @default(cuid())
+  name      String
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId    String?
+  channelId String?
+  channel   Channel? @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  type      String   @default("url") // url | text | email | phone | sms | wifi | vcard | location | event | app | crypto | whatsapp | paypal | link | bio
+  data      String // encoded content or JSON for structured types
+  isDynamic Boolean  @default(true)
+  linkId    String?
+  link      Link?    @relation(fields: [linkId], references: [id], onDelete: SetNull)
+  bioPageId String?
+  bioPage   BioPage? @relation(fields: [bioPageId], references: [id], onDelete: SetNull)
+  alias     String?  @unique // dynamic qr short alias for tracking
+  style     String   @default("{}") // {dots,corners,cornerDots,color,gradient,bg,logo,logoSize,frame,frameText,frameColor,eyeShape,matrix,template}
+  image     String? // rendered svg/png path
+  scans     Int      @default(0)
+  stats     Click[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------- CMS: pages, blog, help center
+model Page {
+  id        String   @id @default(cuid())
+  title     String
+  slug      String   @unique
+  content   String
+  seoTitle  String?
+  seoDescription String?
+  showInFooter Boolean @default(true)
+  showInHeader Boolean @default(false)
+  published Boolean  @default(true)
+  language  String   @default("all")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BlogCategory {
+  id    String     @id @default(cuid())
+  name  String
+  slug  String     @unique
+  posts BlogPost[]
+}
+
+model BlogPost {
+  id         String        @id @default(cuid())
+  title      String
+  slug       String        @unique
+  excerpt    String?
+  content    String
+  image      String?
+  categoryId String?
+  category   BlogCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  authorId   String?
+  author     User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  tags       String        @default("")
+  seoTitle   String?
+  seoDescription String?
+  published  Boolean       @default(false)
+  views      Int           @default(0)
+  language   String        @default("all")
+  publishedAt DateTime?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model HelpCategory {
+  id       String        @id @default(cuid())
+  name     String
+  slug     String        @unique
+  icon     String?
+  order    Int           @default(0)
+  articles HelpArticle[]
+}
+
+model HelpArticle {
+  id         String        @id @default(cuid())
+  title      String
+  slug       String        @unique
+  content    String
+  categoryId String?
+  category   HelpCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  published  Boolean       @default(true)
+  views      Int           @default(0)
+  helpful    Int           @default(0)
+  order      Int           @default(0)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model Testimonial {
+  id      String  @id @default(cuid())
+  name    String
+  role    String?
+  avatar  String?
+  content String
+  rating  Int     @default(5)
+  active  Boolean @default(true)
+  order   Int     @default(0)
+}
+
+model Faq {
+  id       String  @id @default(cuid())
+  question String
+  answer   String
+  order    Int     @default(0)
+  active   Boolean @default(true)
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  type      String   @default("info") // info | warning | success
+  target    String   @default("all") // all | users | guests | admin
+  active    Boolean  @default(true)
+  dismissible Boolean @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Ad {
+  id       String  @id @default(cuid())
+  name     String
+  slot     String // header | footer | sidebar | splash-top | splash-bottom | bio | frame
+  code     String
+  active   Boolean @default(true)
+}
+
+// ---------------------------------------------------------------- Settings, i18n, themes
+model Setting {
+  key   String @id
+  value String
+  group String @default("general")
+}
+
+model Language {
+  id        String        @id @default(cuid())
+  code      String        @unique
+  name      String
+  flag      String?
+  rtl       Boolean       @default(false)
+  active    Boolean       @default(true)
+  isDefault Boolean       @default(false)
+  strings   Translation[]
+}
+
+model Translation {
+  id         String   @id @default(cuid())
+  languageId String
+  language   Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+  key        String
+  value      String
+
+  @@unique([languageId, key])
+}
+
+model EmailTemplate {
+  id       String @id @default(cuid())
+  slug     String @unique
+  subject  String
+  body     String
+  language String @default("en")
+  active   Boolean @default(true)
+}
+
+model Theme {
+  id       String  @id @default(cuid())
+  slug     String  @unique
+  name     String
+  active   Boolean @default(false)
+  parent   String?
+  config   String  @default("{}") // colors, fonts, logo, layout
+  customCss String?
+  customJs  String?
+  overrides String  @default("{}") // template overrides from the theme editor
+}
+
+model Plugin {
+  id       String  @id @default(cuid())
+  slug     String  @unique
+  name     String
+  version  String  @default("1.0.0")
+  active   Boolean @default(false)
+  config   String  @default("{}")
+}
+
+// ---------------------------------------------------------------- API, integrations
+model ApiKey {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  key         String    @unique
+  permissions String    @default("[\"*\"]") // JSON array: links.read, links.write, qr.*, bio.*, etc.
+  lastUsedAt  DateTime?
+  requests    Int       @default(0)
+  active      Boolean   @default(true)
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+}
+
+model Webhook {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  url       String
+  events    String   @default("[\"link.created\"]") // link.created | link.clicked | bio.viewed | qr.scanned
+  secret    String?
+  provider  String   @default("zapier") // zapier | slack | custom
+  active    Boolean  @default(true)
+  lastCalledAt DateTime?
+  failures  Int      @default(0)
+  logs      WebhookLog[]
+  createdAt DateTime @default(now())
+}
+
+model WebhookLog {
+  id         String   @id @default(cuid())
+  webhookId  String
+  webhook    Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event      String
+  payload    String
+  status     Int?
+  response   String?
+  attempts   Int      @default(1)
+  success    Boolean  @default(false)
+  nextRetryAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([webhookId, createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("info")
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
+
+model Report {
+  id        String   @id @default(cuid())
+  linkId    String?
+  bioPageId String?
+  url       String?
+  reason    String
+  details   String?
+  email     String?
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  status    String   @default("pending") // pending | resolved | dismissed
+  createdAt DateTime @default(now())
+}
+
+model BlockedItem {
+  id    String @id @default(cuid())
+  type  String // domain | word | ip | email | alias
+  value String
+  createdAt DateTime @default(now())
+
+  @@unique([type, value])
+}
+
+model AiUsage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feature   String // slug | bio | insights
+  provider  String
+  tokens    Int      @default(0)
+  credits   Int      @default(1)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model ImportJob {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  filename  String
+  total     Int      @default(0)
+  processed Int      @default(0)
+  failed    Int      @default(0)
+  status    String   @default("pending") // pending | processing | done | failed
+  errors    String   @default("[]")
+  createdAt DateTime @default(now())
+}
+
+model CronLog {
+  id        String   @id @default(cuid())
+  job       String
+  status    String
+  message   String?
+  createdAt DateTime @default(now())
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String?
+  message   String
+  ip        String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model NewsletterSubscriber {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  source    String?
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------- Helpdesk plugin
+model TicketCategory {
+  id      String   @id @default(cuid())
+  name    String
+  color   String   @default("#6366f1")
+  order   Int      @default(0)
+  tickets Ticket[]
+}
+
+model Ticket {
+  id          String          @id @default(cuid())
+  number      Int             @unique
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryId  String?
+  category    TicketCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  subject     String
+  priority    String          @default("low") // low | medium | high | urgent
+  status      String          @default("open") // open | pending | resolved | closed
+  assigneeId  String?
+  customFields String         @default("{}")
+  rating      Int?
+  ratingComment String?
+  replies     TicketReply[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([userId])
+}
+
+model TicketReply {
+  id          String   @id @default(cuid())
+  ticketId    String
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  message     String
+  attachments String   @default("[]")
+  isStaff     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model SavedReply {
+  id      String @id @default(cuid())
+  title   String
+  content String
+}
+
+// ---------------------------------------------------------------- File hosting plugin
+model HostedFile {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  alias       String    @unique
+  domainId    String?
+  name        String
+  path        String
+  size        Int
+  mime        String
+  password    String?
+  expiresAt   DateTime?
+  encrypted   Boolean   @default(false)
+  branding    String    @default("{}") // {title, description, logo, color}
+  downloads   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------- Send SMS plugin (Twilio)
+model SmsContact {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String?
+  phone     String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model SmsMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  to        String
+  body      String
+  status    String   @default("queued") // queued | sent | delivered | failed
+  sid       String?
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------- Premium extras
+model LinkCheck {
+  id        String   @id @default(cuid())
+  linkId    String
+  link      Link     @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  status    Int?
+  ok        Boolean  @default(false)
+  latencyMs Int?
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([linkId, createdAt])
+}
+
+model Conversion {
+  id        String   @id @default(cuid())
+  linkId    String
+  link      Link     @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  clickId   String?
+  goal      String   @default("conversion")
+  value     Float    @default(0)
+  ip        String?
+  country   String?
+  device    String?
+  meta      String   @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([linkId, createdAt])
+}
+
+model SharedReport {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linkId    String?
+  link      Link?    @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  campaignId String?
+  bioPageId String?
+  title     String?
+  password  String?
+  expiresAt DateTime?
+  views     Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actorId   String?
+  action    String // link.create, link.update, bio.create, login, plan.change, settings.update ...
+  target    String?
+  targetId  String?
+  meta      String   @default("{}")
+  ip        String?
+  isAdmin   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([isAdmin, createdAt])
+}
+
+model MigrationJob {
+  id        String   @id @default(cuid())
+  userId    String
+  source    String // bitly | rebrandly | tinyurl | csv
+  total     Int      @default(0)
+  imported  Int      @default(0)
+  skipped   Int      @default(0)
+  status    String   @default("pending")
+  log       String   @default("[]")
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------- Temporary Email plugin
+model TempMailbox {
+  id        String      @id @default(cuid())
+  address   String      @unique
+  userId    String?
+  user      User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String      @unique // guest access token
+  expiresAt DateTime
+  emails    TempEmail[]
+  createdAt DateTime    @default(now())
+
+  @@index([userId])
+}
+
+model TempEmail {
+  id          String      @id @default(cuid())
+  mailboxId   String
+  mailbox     TempMailbox @relation(fields: [mailboxId], references: [id], onDelete: Cascade)
+  fromAddress String
+  fromName    String?
+  subject     String?
+  text        String?
+  html        String?
+  attachments String      @default("[]")
+  read        Boolean     @default(false)
+  receivedAt  DateTime    @default(now())
+
+  @@index([mailboxId, receivedAt])
+}

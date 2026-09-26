@@ -1,0 +1,61 @@
+# Premium URL Shortener — docker compose
+#   cp .env.example .env   (set APP_URL, AUTH_SECRET, CRON_SECRET, mail settings ...)
+#   docker compose up -d --build
+# The default setup uses SQLite stored in the `pus-data` volume. To use MySQL, uncomment the `mysql`
+# service, change `provider = "mysql"` in prisma/schema.prisma and set DATABASE_URL accordingly.
+services:
+  app:
+    build: .
+    image: premium-url-shortener:latest
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-3000}:3000"
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-file:./data/app.db}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      AUTH_TRUST_HOST: "true"
+    volumes:
+      - pus-data:/app/prisma/data
+      - pus-uploads:/app/public/uploads
+      - pus-storage:/app/storage
+    # depends_on:
+    #   mysql:
+    #     condition: service_healthy
+
+  # Cron sidecar: calls every /api/cron/<job> endpoint of the app every 10 minutes.
+  cron:
+    image: premium-url-shortener:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    env_file: .env
+    environment:
+      APP_URL: http://app:3000
+      CRON_INTERVAL_MINUTES: ${CRON_INTERVAL_MINUTES:-10}
+    command: ["pnpm", "tsx", "scripts/cron.ts", "--loop", "${CRON_INTERVAL_MINUTES:-10}"]
+
+  # mysql:
+  #   image: mysql:8
+  #   restart: unless-stopped
+  #   environment:
+  #     MYSQL_DATABASE: shortener
+  #     MYSQL_USER: shortener
+  #     MYSQL_PASSWORD: change-me
+  #     MYSQL_ROOT_PASSWORD: change-me-too
+  #   volumes:
+  #     - pus-mysql:/var/lib/mysql
+  #   healthcheck:
+  #     test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pchange-me-too"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 10
+  # # then set in .env:  DATABASE_URL="mysql://shortener:change-me@mysql:3306/shortener"
+
+volumes:
+  pus-data:
+  pus-uploads:
+  pus-storage:
+  # pus-mysql:
