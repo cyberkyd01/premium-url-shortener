@@ -84,7 +84,7 @@ This block only reads; it changes nothing. Each line it prints starts with `OK`,
   else stop "Port $PORT is in use by another program - set another PORT in /etc/$APP/deploy.conf (sudo nano)"; fi
   if [ -z "$DOMAIN" ]; then
     if ! sudo ss -ltnH "sport = :$PUBLIC_PORT" | grep -q .; then ok "Public port $PUBLIC_PORT is free"
-    elif sudo ss -ltnpH "sport = :$PUBLIC_PORT" | grep -q nginx; then ok "Public port $PUBLIC_PORT is served by nginx (re-run)"
+    elif sudo ss -ltnpH "sport = :$PUBLIC_PORT" | grep -qE '"(nginx|caddy|apache2)"'; then ok "Public port $PUBLIC_PORT is served by the web server (re-run)"
     else stop "Public port $PUBLIC_PORT is in use - set another PUBLIC_PORT in /etc/$APP/deploy.conf"; fi
   fi
   WEB=$(sudo ss -ltnpH '( sport = :80 or sport = :443 )' | grep -oE 'users:\(\("[^"]+"' | cut -d'"' -f2 | sort -u | xargs)
@@ -853,29 +853,65 @@ Also delete the deploy key at <https://github.com/cyberkyd01/premium-url-shorten
 
 ## Appendix: Caddy / Apache instead of nginx
 
-Use this appendix only if preflight reported that ports 80/443 belong to another web server. Do steps 1–10, skip step 11, then add **one** of the following. The app still listens only on `127.0.0.1:3101`. Both snippets serve `/uploads/` from disk, for the reason explained in step 11.
+Use this appendix only if preflight reported that ports 80/443 belong to another web server (a `STOP` about ports 80/443 is expected in that case; the other checks still apply). Do steps 1–10, skip step 11, then add **one** of the following. The app still listens only on `127.0.0.1:3101`. Both snippets serve `/uploads/` from disk, for the reason explained in step 11.
 
-**Caddy** (it gets the HTTPS certificate on its own). Add this to your Caddyfile, usually `/etc/caddy/Caddyfile`, with your domain:
+**Caddy** (it gets the HTTPS certificate on its own). This block uses `DOMAIN` from `deploy.conf`, or serves `http://SERVER_IP:8101` when it's empty, just like step 11. It doesn't edit your existing sites:
 
-```caddyfile
-go.example.com {
+- If your Caddyfile already imports a folder of site files (a line like `import /etc/caddy/sites/*.caddy`), the shortener gets its own `shortener.caddy` in that folder and the Caddyfile isn't touched.
+- Otherwise it writes `/etc/caddy/shortener.caddy` and appends one `import` line for it to the Caddyfile.
+
+It runs `caddy validate` before reloading, and if validation fails it puts both files back exactly as they were. The reload is graceful, so your other sites keep running. Safe to re-run.
+
+```bash
+sudo bash -euo pipefail <<'EOF'
+source /etc/shortener/deploy.conf
+CADDYFILE=/etc/caddy/Caddyfile
+command -v caddy >/dev/null && [ -f "$CADDYFILE" ] || { echo "STOP: Caddy or $CADDYFILE not found"; exit 1; }
+# Reuse a folder the Caddyfile already imports (e.g. "import /etc/caddy/sites/*.caddy"); otherwise add one import line.
+DIR="$(grep -oE '^[[:space:]]*import[[:space:]]+[^[:space:]]+/\*\.caddy' "$CADDYFILE" | awk '{print $2}' | head -1 | xargs -r dirname || true)"
+if [ -n "$DIR" ]; then SITE="$DIR/$APP.caddy"; ADD_IMPORT=""; else SITE="$(dirname "$CADDYFILE")/$APP.caddy"; ADD_IMPORT="import $SITE"; fi
+if [ -n "$DOMAIN" ]; then
+  IP="$(curl -4fsS https://api.ipify.org || true)"; DNS="$(getent ahostsv4 "$DOMAIN" | awk '{print $1}' | sort -u | xargs || true)"
+  case " $DNS " in *" $IP "*) echo "OK: $DOMAIN -> $IP" ;; *) echo "STOP: $DOMAIN resolves to '${DNS:-nothing}', this server is $IP. Fix the A record, wait a few minutes, re-run."; exit 1 ;; esac
+  ADDR="$DOMAIN"
+else
+  ADDR="http://:$PUBLIC_PORT"
+fi
+cp -p "$CADDYFILE" "$CADDYFILE.bak-$APP"; [ -f "$SITE" ] && cp -p "$SITE" "$SITE.bak"
+cat > "$SITE" <<CADDY
+# Premium URL Shortener - written by DEPLOY.md (Appendix: Caddy). Safe to re-run; edit deploy.conf, not this file.
+$ADDR {
     request_body {
         max_size 25MB
     }
+    # Uploaded files live outside the release; next start would not see files added after it started.
     handle_path /uploads/* {
-        root * /opt/shortener/shared/public/uploads
+        root * $APP_HOME/shared/public/uploads
         header X-Content-Type-Options nosniff
         file_server
     }
-    reverse_proxy 127.0.0.1:3101 {
+    # flush_interval -1 keeps the live click stream (/api/stream/) unbuffered.
+    reverse_proxy 127.0.0.1:$PORT {
         flush_interval -1
     }
 }
+CADDY
+if [ -n "$ADD_IMPORT" ] && ! grep -qxF "$ADD_IMPORT" "$CADDYFILE"; then printf '\n# Premium URL Shortener (DEPLOY.md)\n%s\n' "$ADD_IMPORT" >> "$CADDYFILE"; fi
+if ! caddy validate --config "$CADDYFILE" --adapter caddyfile >/tmp/$APP-caddy-validate.log 2>&1; then
+  echo "STOP: caddy validate failed - restoring the previous state"; tail -5 /tmp/$APP-caddy-validate.log
+  mv -f "$CADDYFILE.bak-$APP" "$CADDYFILE"
+  if [ -f "$SITE.bak" ]; then mv -f "$SITE.bak" "$SITE"; else rm -f "$SITE"; fi
+  exit 1
+fi
+rm -f "$CADDYFILE.bak-$APP" "$SITE.bak"
+systemctl reload caddy
+if [ -z "$DOMAIN" ] && ufw status 2>/dev/null | grep -q "Status: active"; then ufw allow "$PUBLIC_PORT/tcp" comment "$APP"; fi
+echo "Caddy site OK: $SITE"
+if [ -n "$DOMAIN" ]; then echo "Caddy is getting the certificate now - https://$DOMAIN works in about a minute."; else echo "Site: http://$(curl -4fsS https://api.ipify.org):$PUBLIC_PORT"; fi
+EOF
 ```
 
-```bash
-sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
-```
+To **connect a domain later** with Caddy, point the domain's A record at the server, set `DOMAIN` in `deploy.conf`, run the `.env` block from "Adding a domain later" in step 11 (it updates the URLs and redeploys), then run the block above again. Caddy replaces the `:8101` site with the domain and gets the certificate itself; no certbot needed. Remove the old port's firewall rule with `sudo ufw delete allow 8101/tcp`.
 
 **Apache.** Create `/etc/apache2/sites-available/shortener.conf` with your domain:
 
@@ -906,4 +942,4 @@ sudo a2enmod proxy proxy_http headers && sudo a2ensite shortener && sudo apache2
 sudo apt-get install -y --no-install-recommends python3-certbot-apache && sudo certbot --apache -d go.example.com
 ```
 
-For uninstall, remove the site with `sudo a2dissite shortener && sudo systemctl reload apache2`, or remove the Caddy block, instead of the nginx lines.
+For uninstall, instead of the nginx lines: on Apache run `sudo a2dissite shortener && sudo systemctl reload apache2`. On Caddy, delete the `shortener.caddy` file the block printed, remove the `import .../shortener.caddy` line from the Caddyfile if the block added one, then `sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy`.
