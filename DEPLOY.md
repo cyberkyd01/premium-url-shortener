@@ -109,9 +109,10 @@ This only adds packages. It never upgrades or removes any. `openssl` is needed b
 
 ```bash
 sudo bash -euo pipefail <<'EOF'
-export DEBIAN_FRONTEND=noninteractive
+export DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1   # additive only: needrestart must not restart other services
 apt-get update -qq
-apt-get install -y --no-install-recommends ca-certificates curl git openssh-client openssl xz-utils sqlite3 iproute2
+MISSING_PKGS=""; for p in ca-certificates curl git openssh-client openssl xz-utils sqlite3 iproute2; do dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q 'ok installed' || MISSING_PKGS="$MISSING_PKGS $p"; done
+if [ -n "$MISSING_PKGS" ]; then apt-get install -y --no-install-recommends $MISSING_PKGS; fi   # only what's missing - never upgrades installed packages
 echo "Packages OK"
 EOF
 ```
@@ -519,6 +520,7 @@ Why nginx serves `/uploads/` directly: `next start` only serves files that were 
 
 ```bash
 sudo bash -euo pipefail <<'EOF'
+export DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1   # additive only: needrestart must not restart other services
 source /etc/shortener/deploy.conf
 WEB="$(ss -ltnpH '( sport = :80 or sport = :443 )' | grep -oE 'users:\(\("[^"]+"' | cut -d'"' -f2 | sort -u | xargs || true)"
 case "$WEB" in ""|nginx) ;; *) echo "STOP: ports 80/443 are used by '$WEB', not nginx. Use the Appendix (Caddy / Apache)."; exit 1 ;; esac
@@ -595,6 +597,7 @@ EOF
 
 ```bash
 sudo bash -euo pipefail <<'EOF'
+export DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1   # additive only: needrestart must not restart other services
 source /etc/shortener/deploy.conf
 if [ -z "$DOMAIN" ]; then echo "No DOMAIN set - skipping HTTPS. Your site: http://$(curl -4fsS https://api.ipify.org):$PUBLIC_PORT"; exit 0; fi
 [ -n "$EMAIL" ] || { echo "STOP: set EMAIL in /etc/$APP/deploy.conf"; exit 1; }
@@ -939,7 +942,7 @@ Then enable it (these commands only add modules and a site) and get the certific
 
 ```bash
 sudo a2enmod proxy proxy_http headers && sudo a2ensite shortener && sudo apache2ctl configtest && sudo systemctl reload apache2
-sudo apt-get install -y --no-install-recommends python3-certbot-apache && sudo certbot --apache -d go.example.com
+sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get install -y --no-install-recommends python3-certbot-apache && sudo certbot --apache -d go.example.com
 ```
 
 For uninstall, instead of the nginx lines: on Apache run `sudo a2dissite shortener && sudo systemctl reload apache2`. On Caddy, delete the `shortener.caddy` file the block printed, remove the `import .../shortener.caddy` line from the Caddyfile if the block added one, then `sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy`.
