@@ -5,6 +5,8 @@ short links with advanced targeting, bio pages, QR codes, splash & overlay pages
 & roles, membership plans with 13 payment gateways, affiliates, CMS/blog/help center, admin panel, REST API, Zapier,
 Slack, Chrome extension, WordPress plugin, AI Copilot, file hosting and SMS.
 
+> **Deploying to a server?** Follow the step-by-step VPS guide: **[DEPLOY.md](DEPLOY.md)**
+
 ## Quick start
 
 ```bash
@@ -18,6 +20,8 @@ pnpm dev                       # http://localhost:3000
 Default admin: `admin@example.com` / `admin1234` (override with `ADMIN_EMAIL` / `ADMIN_PASSWORD` before seeding).
 
 ### Production
+
+For a step-by-step VPS setup (isolated Node runtime, systemd service, cron timer, nginx + HTTPS, backups, rollback) follow **[DEPLOY.md](DEPLOY.md)**.
 
 ```bash
 pnpm build && pnpm start
