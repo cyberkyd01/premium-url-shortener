@@ -53,3 +53,11 @@ run `pnpm prisma db push`.
 | Integrations (WordPress plugin, Chrome extension, API clients, bookmarklet) | `integrations/`, `public/bookmarklet.js` |
 
 See `docs/FEATURES.md` for the complete feature checklist (parity with the original plus 18 extra premium features), `docs/API.md` for the REST API, and `docs/ARCHITECTURE.md` for code conventions.
+
+---
+
+## ⭐ Support
+
+Please give stars and if possible Buy me a coffee (USDT-TRC20) - `TA216k3WgWTrKnUKxZrSDNGzSJj3eHtEcH`
+
+Telegram: [@Cyberkyd](https://t.me/Cyberkyd)
